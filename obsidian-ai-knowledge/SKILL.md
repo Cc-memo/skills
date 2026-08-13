@@ -37,6 +37,18 @@ Capture when any of these are true:
 
 Skip casual conversation, translation, trivial factual answers, and unsuccessful exploration without a stable conclusion. If the user says not to record, skip completely.
 
+## Default Conversation Review Protocol
+
+When this Skill is explicitly invoked for a substantial conversation or task, automatically run this protocol without asking the user to repeat it:
+
+1. **Summarize** the conversation: goal, actions, decisions, deliverables, validation, and remaining work.
+2. **Expose problem candidates** separately from the summary. Extract each concrete symptom, error signature, blocked step, unresolved question, or repeated concern. Do not use the conversation title or whole summary as a problem.
+3. **Recall history per candidate** using `scripts/conversation_review.py` or the equivalent two-stage cue/detail workflow. Inspect whether a trusted problem card or playbook already covers the candidate.
+4. **Choose the write action**: update the matching problem card with a dated event; create a new problem only when the root cause and verification are established; otherwise keep the candidate in the session or Inbox.
+5. **Validate and report** the summary, problem candidates, historical matches, chosen actions, and any unresolved candidates.
+
+The user may simply say `$obsidian-ai-knowledge 总结本次对话`; the protocol above is implied. The user does not need to paste a longer instruction block each time.
+
 ## Capture Levels
 
 1. **Session** — factual record of substantial completed work. This is the default formal record.
