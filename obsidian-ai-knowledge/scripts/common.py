@@ -31,6 +31,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "plugins": {
         "required_community": [],
     },
+    "solution_index": None,
     "quality": {
         "stale_active_project_days": 90,
         "stable_playbook_min_uses": 2,

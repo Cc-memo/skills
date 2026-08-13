@@ -8,9 +8,10 @@ from typing import Any
 
 from common import iter_record_paths, load_config, resolve_vault, split_frontmatter
 from search_knowledge import search_records, stringify, trust_state
+from solution_index import search_index
 
 
-ANSWER_TYPES = {"problem", "playbook", "session"}
+ANSWER_TYPES = {"problem", "playbook"}
 
 
 def answer_priority(item: dict[str, Any]) -> tuple[int, int, str]:
@@ -31,10 +32,31 @@ def answer_priority(item: dict[str, Any]) -> tuple[int, int, str]:
 
 
 def recall_solutions(vault: Path, query: str, *, limit: int = 8) -> list[dict[str, Any]]:
-    results = search_records(vault, query, limit=max(limit * 4, 16), snippet_width=520)
+    indexed = search_index(vault, query, limit=limit)
+    if indexed is not None:
+        strongest = max((int(item.get("score") or 0) for item in indexed), default=0)
+        if strongest < 35:
+            evidence = search_records(
+                vault,
+                query,
+                record_type="session",
+                trusted_only=True,
+                limit=max(limit * 2, 6),
+                snippet_width=260,
+            )
+            merged = sorted(indexed + evidence, key=lambda item: (-int(item.get("score") or 0), item.get("path", "")))
+            return merged[: max(limit, 1)]
+        clues = search_records(vault, query, limit=max(limit * 2, 6), snippet_width=260)
+        clues = [item for item in clues if item.get("trust_state") != "trusted"]
+        return indexed + clues[: max(0, limit - len(indexed))]
+    results = search_records(vault, query, record_type=None, limit=max(limit * 4, 16), snippet_width=520)
     answers = [item for item in results if item.get("record_type") in ANSWER_TYPES]
     answers.sort(key=lambda item: (-answer_priority(item)[0], -answer_priority(item)[1], answer_priority(item)[2]))
-    return answers[: max(limit, 1)]
+    clues = [item for item in results if item.get("trust_state") != "trusted"]
+    selected = answers[: max(limit, 1)]
+    selected_ids = {item.get("record_id") for item in selected}
+    selected.extend(item for item in clues if item.get("record_id") not in selected_ids)
+    return selected[: max(limit, 1)]
 
 
 def solution_signature(item: dict[str, Any]) -> tuple[str, str, str]:
