@@ -1,0 +1,7 @@
+interface:
+  display_name: "Obsidian AI Knowledge"
+  short_description: "Summarize conversations, expose problems, recall solutions, and capture verified knowledge"
+  default_prompt: "Use $obsidian-ai-knowledge to summarize the conversation, extract concrete problem candidates separately, recall prior solutions for each candidate, then update the verified project, problem, session, or playbook records when the task is complete."
+
+policy:
+  allow_implicit_invocation: true
