@@ -12,6 +12,7 @@ from solution_index import search_index
 
 
 ANSWER_TYPES = {"problem", "playbook"}
+PROBE_THRESHOLD = 35
 
 
 def answer_priority(item: dict[str, Any]) -> tuple[int, int, str]:
@@ -35,7 +36,7 @@ def recall_solutions(vault: Path, query: str, *, limit: int = 8) -> list[dict[st
     indexed = search_index(vault, query, limit=limit)
     if indexed is not None:
         strongest = max((int(item.get("score") or 0) for item in indexed), default=0)
-        if strongest < 35:
+        if strongest < PROBE_THRESHOLD:
             evidence = search_records(
                 vault,
                 query,
@@ -57,6 +58,40 @@ def recall_solutions(vault: Path, query: str, *, limit: int = 8) -> list[dict[st
     selected_ids = {item.get("record_id") for item in selected}
     selected.extend(item for item in clues if item.get("record_id") not in selected_ids)
     return selected[: max(limit, 1)]
+
+
+def probe_solution(vault: Path, query: str, *, min_score: int = PROBE_THRESHOLD) -> dict[str, Any]:
+    indexed = search_index(vault, query, limit=1)
+    if indexed is None:
+        return {
+            "match": False,
+            "reason": "index-missing",
+            "next": "solve-directly",
+        }
+    if not indexed:
+        return {
+            "match": False,
+            "reason": "no-candidate",
+            "next": "solve-directly",
+        }
+    candidate = indexed[0]
+    score = int(candidate.get("score") or 0)
+    if score < min_score:
+        return {
+            "match": False,
+            "reason": "weak-match",
+            "score": score,
+            "next": "solve-directly",
+        }
+    return {
+        "match": True,
+        "record_id": candidate.get("record_id"),
+        "record_type": candidate.get("record_type"),
+        "score": score,
+        "trust_state": candidate.get("trust_state"),
+        "root_cause": stringify(candidate.get("root_cause"))[:160],
+        "next": "load-detail",
+    }
 
 
 def solution_signature(item: dict[str, Any]) -> tuple[str, str, str]:
@@ -215,7 +250,8 @@ def main() -> int:
     parser.add_argument("--vault", type=Path)
     parser.add_argument("--limit", type=int, default=3)
     parser.add_argument("--max-chars", type=int)
-    parser.add_argument("--mode", choices=("cue", "compact", "full", "detail"), default="cue")
+    parser.add_argument("--mode", choices=("probe", "cue", "compact", "full", "detail"), default="probe")
+    parser.add_argument("--min-score", type=int, default=PROBE_THRESHOLD)
     parser.add_argument("--record-id", help="Fetch one exact record for the second retrieval stage")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
@@ -228,6 +264,9 @@ def main() -> int:
         return 0
     if not args.query:
         parser.error("--query is required unless --record-id is provided")
+    if args.mode == "probe":
+        print(json.dumps(probe_solution(vault, args.query, min_score=max(args.min_score, 1)), ensure_ascii=False))
+        return 0
     results = recall_solutions(vault, args.query, limit=max(args.limit, 1))
     if args.json:
         print(json.dumps(results, ensure_ascii=False, indent=2, default=str))
