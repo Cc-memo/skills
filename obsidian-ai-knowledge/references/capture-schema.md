@@ -108,6 +108,7 @@ Optional session fields:
 - `validation_state`: `passed`, `partial`, `failed`, `not_run`, or `not_applicable`.
 - `validation_evidence`: tests, build results, inspections, commands, screenshots, or source checks.
 - `key_decisions`: concise decisions whose rationale can be reviewed.
+- `decision_index`: optional boolean promotion for a reviewed delivery session that contains a reusable choice, comparison, rollback rationale, or implementation decision. Do not set it for ordinary delivery notes merely because `key_decisions` exists.
 - `next_action`: the next concrete action when work remains.
 
 `output_report.py` classifies current results without changing formal records:

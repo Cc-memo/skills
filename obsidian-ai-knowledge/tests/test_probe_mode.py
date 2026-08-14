@@ -53,6 +53,7 @@ class ProbeModeTests(unittest.TestCase):
         save_index(vault)
         result = probe_solution(vault, "unrelated question")
         self.assertFalse(result["match"])
+        self.assertEqual(result["route"], "problem")
         self.assertEqual(result["next"], "solve-directly")
 
     def test_probe_returns_only_compact_match(self) -> None:
@@ -61,7 +62,7 @@ class ProbeModeTests(unittest.TestCase):
         save_index(vault)
         result = probe_solution(vault, "ERR_X")
         self.assertTrue(result["match"])
-        self.assertEqual(set(result), {"match", "record_id", "record_type", "score", "trust_state", "root_cause", "next"})
+        self.assertEqual(set(result), {"match", "route", "record_id", "record_type", "score", "trust_state", "root_cause", "next"})
         self.assertEqual(result["next"], "load-detail")
 
 

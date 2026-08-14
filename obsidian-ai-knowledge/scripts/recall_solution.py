@@ -7,12 +7,25 @@ from pathlib import Path
 from typing import Any
 
 from common import iter_record_paths, load_config, resolve_vault, split_frontmatter
+from decision_index import (
+    DECISION_MARKERS,
+    build_entries as build_decision_entries,
+    search_entries as search_decision_entries,
+    search_index as search_decision_index,
+)
+from project_space import find_project_note
 from search_knowledge import search_records, stringify, trust_state
 from solution_index import search_index
 
 
 ANSWER_TYPES = {"problem", "playbook"}
 PROBE_THRESHOLD = 35
+DECISION_PROBE_THRESHOLD = 20
+ROUTES = {"auto", "problem", "decision", "project"}
+PROBLEM_ROUTE_MARKERS = (
+    "\u62a5\u9519", "\u9519\u8bef", "\u5931\u8d25", "\u5f02\u5e38", "\u5d29\u6e83", "\u65e0\u6cd5", "\u4e0d\u5de5\u4f5c", "\u914d\u7f6e", "\u5b89\u88c5",
+    "error", "exception", "traceback", "failed", "failure", "crash", "bug", "config", "install",
+)
 
 
 def answer_priority(item: dict[str, Any]) -> tuple[int, int, str]:
@@ -60,17 +73,92 @@ def recall_solutions(vault: Path, query: str, *, limit: int = 8) -> list[dict[st
     return selected[: max(limit, 1)]
 
 
-def probe_solution(vault: Path, query: str, *, min_score: int = PROBE_THRESHOLD) -> dict[str, Any]:
+def recall_decisions(vault: Path, query: str, *, limit: int = 3) -> list[dict[str, Any]]:
+    indexed = search_decision_index(vault, query, limit=limit)
+    if indexed is not None:
+        return indexed
+    return search_decision_entries(vault, build_decision_entries(vault), query, limit=max(limit, 1))
+
+
+def detect_route(query: str, *, project: str | None = None) -> str:
+    if project:
+        return "project"
+    normalized = query.casefold()
+    if any(marker.casefold() in normalized for marker in PROBLEM_ROUTE_MARKERS):
+        return "problem"
+    if any(marker.casefold() in normalized for marker in DECISION_MARKERS):
+        return "decision"
+    return "problem"
+
+
+def project_probe(vault: Path, project: str | None) -> dict[str, Any]:
+    if not project:
+        return {"match": False, "route": "project", "reason": "project-required", "next": "provide-project"}
+    try:
+        project_note = find_project_note(vault, load_config(vault), project)
+        metadata, _ = split_frontmatter(project_note.read_text(encoding="utf-8"))
+    except (OSError, ValueError, FileNotFoundError):
+        return {"match": False, "route": "project", "reason": "project-not-found", "next": "solve-directly"}
+    return {
+        "match": True,
+        "route": "project",
+        "project": project_note.stem,
+        "record_id": metadata.get("record_id"),
+        "status": metadata.get("status"),
+        "freshness_state": metadata.get("freshness_state", "unknown"),
+        "next_action": stringify(metadata.get("next_action"))[:180],
+        "next": "load-project-context",
+    }
+
+
+def _compact_match(candidate: dict[str, Any], *, route: str) -> dict[str, Any]:
+    return {
+        "match": True,
+        "route": route,
+        "record_id": candidate.get("record_id"),
+        "record_type": candidate.get("record_type"),
+        "score": int(candidate.get("score") or 0),
+        "trust_state": candidate.get("trust_state"),
+        "root_cause": stringify(candidate.get("root_cause"))[:160],
+        "next": "load-detail",
+    }
+
+
+def probe_solution(
+    vault: Path,
+    query: str,
+    *,
+    min_score: int = PROBE_THRESHOLD,
+    route: str = "auto",
+    project: str | None = None,
+) -> dict[str, Any]:
+    selected_route = detect_route(query, project=project) if route == "auto" else route
+    if selected_route == "project":
+        return project_probe(vault, project)
+    if selected_route == "decision":
+        indexed = recall_decisions(vault, query, limit=1)
+        decision_threshold = min(min_score, DECISION_PROBE_THRESHOLD)
+        if indexed and int(indexed[0].get("score") or 0) >= decision_threshold:
+            return _compact_match(indexed[0], route="decision")
+        return {
+            "match": False,
+            "route": "decision",
+            "reason": "weak-match" if indexed else "no-candidate",
+            "score": int(indexed[0].get("score") or 0) if indexed else 0,
+            "next": "solve-directly",
+        }
     indexed = search_index(vault, query, limit=1)
     if indexed is None:
         return {
             "match": False,
+            "route": "problem",
             "reason": "index-missing",
             "next": "solve-directly",
         }
     if not indexed:
         return {
             "match": False,
+            "route": "problem",
             "reason": "no-candidate",
             "next": "solve-directly",
         }
@@ -79,19 +167,12 @@ def probe_solution(vault: Path, query: str, *, min_score: int = PROBE_THRESHOLD)
     if score < min_score:
         return {
             "match": False,
+            "route": "problem",
             "reason": "weak-match",
             "score": score,
             "next": "solve-directly",
         }
-    return {
-        "match": True,
-        "record_id": candidate.get("record_id"),
-        "record_type": candidate.get("record_type"),
-        "score": score,
-        "trust_state": candidate.get("trust_state"),
-        "root_cause": stringify(candidate.get("root_cause"))[:160],
-        "next": "load-detail",
-    }
+    return _compact_match(candidate, route="problem")
 
 
 def solution_signature(item: dict[str, Any]) -> tuple[str, str, str]:
@@ -252,6 +333,8 @@ def main() -> int:
     parser.add_argument("--max-chars", type=int)
     parser.add_argument("--mode", choices=("probe", "cue", "compact", "full", "detail"), default="probe")
     parser.add_argument("--min-score", type=int, default=PROBE_THRESHOLD)
+    parser.add_argument("--route", choices=sorted(ROUTES), default="auto")
+    parser.add_argument("--project", help="Project name for the project route")
     parser.add_argument("--record-id", help="Fetch one exact record for the second retrieval stage")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
@@ -265,9 +348,25 @@ def main() -> int:
     if not args.query:
         parser.error("--query is required unless --record-id is provided")
     if args.mode == "probe":
-        print(json.dumps(probe_solution(vault, args.query, min_score=max(args.min_score, 1)), ensure_ascii=False))
+        print(json.dumps(
+            probe_solution(
+                vault,
+                args.query,
+                min_score=max(args.min_score, 1),
+                route=args.route,
+                project=args.project,
+            ),
+            ensure_ascii=False,
+        ))
         return 0
-    results = recall_solutions(vault, args.query, limit=max(args.limit, 1))
+    selected_route = detect_route(args.query, project=args.project) if args.route == "auto" else args.route
+    if selected_route == "project":
+        print(json.dumps(project_probe(vault, args.project), ensure_ascii=False))
+        return 0
+    if selected_route == "decision":
+        results = recall_decisions(vault, args.query, limit=max(args.limit, 1))
+    else:
+        results = recall_solutions(vault, args.query, limit=max(args.limit, 1))
     if args.json:
         print(json.dumps(results, ensure_ascii=False, indent=2, default=str))
     elif args.mode == "cue":

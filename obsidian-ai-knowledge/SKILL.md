@@ -27,10 +27,12 @@ python scripts/recall_solution.py --record-id "record-id" --mode detail
 
 Use `--mode cue` only when comparing several candidates and `--mode full` only for audits. The primary index contains trusted solved problems and stable/verified playbooks. Sessions are supporting evidence, not primary answers.
 
+For research conclusions, previous choices, comparisons, rollback reasons, or retired approaches, use `--route decision`. Reviewed delivery sessions need `decision_index: true` only when they contain reusable rationale. For a named project continuation, use `--route project --project "Project Name"`; then build the focused project context only when the probe requests it. See `references/retrieval-routing.md`.
+
 Rebuild after changing a problem/playbook:
 
 ```powershell
-python scripts/build_solution_index.py
+python scripts/build_memory_indexes.py
 ```
 
 The index is deterministic lexical retrieval, not embeddings. Exact error signatures rank highest. Missing or invalid indexes fall back to lexical search.
@@ -53,5 +55,6 @@ Required safeguards:
 - Capture schema: `references/capture-schema.md`
 - Problem lifecycle: `references/problem-lifecycle.md`
 - Solution index: `references/solution-index.md`
+- Retrieval routes: `references/retrieval-routing.md`
 - Conversation review: `references/conversation-review.md`
 - Portability: `references/portability.md`

@@ -140,6 +140,29 @@ $obsidian-ai-knowledge 查找这个报错以前是否解决过，并给出历史
 $obsidian-ai-knowledge 调取这个项目的最新状态、风险、历史决策和下一步
 ```
 
+### 三路轻量召回
+
+Skill 不会每次把整个 Vault 塞进上下文，而是先按意图查询紧凑索引：
+
+```powershell
+# 重复报错：先查问题/经验索引，再按 record_id 加载详情
+python scripts\recall_solution.py --query "Obsidian 插件占用高" --route problem --mode probe
+
+# 研究、取舍、回退：查询决策索引
+python scripts\recall_solution.py --query "为什么撤回网页 AI 自动捕获" --route decision --mode probe
+
+# 项目续接：只返回状态、新鲜度和下一步
+python scripts\recall_solution.py --query "继续项目" --route project --project "项目名称" --mode probe
+```
+
+命中后再执行 `--record-id <id> --mode detail`。修改问题、经验或决策记录后统一重建：
+
+```powershell
+python scripts\build_memory_indexes.py
+```
+
+决策型交付记录只有在确实包含可复用的选择、比较或实现理由时，才在 frontmatter 中设置 `decision_index: true`；普通交付不会自动进入决策索引。
+
 ## 目录说明
 
 ```text
