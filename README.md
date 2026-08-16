@@ -155,11 +155,15 @@ python scripts\recall_solution.py --query "为什么撤回网页 AI 自动捕获
 python scripts\recall_solution.py --query "继续项目" --route project --project "项目名称" --mode probe
 ```
 
+项目 probe 会现场检查项目记录中的仓库/文件新鲜度；如果返回 `review-stale-project`，先复核变更，不要直接使用旧上下文包。
+
 命中后再执行 `--record-id <id> --mode detail`。修改问题、经验或决策记录后统一重建：
 
 ```powershell
 python scripts\build_memory_indexes.py
 ```
+
+索引带有来源指纹。知识记录被修改后，旧索引会自动失效，问题路由会暂时使用受控词法回退，并提示重建索引。
 
 决策型交付记录只有在确实包含可复用的选择、比较或实现理由时，才在 frontmatter 中设置 `decision_index: true`；普通交付不会自动进入决策索引。
 

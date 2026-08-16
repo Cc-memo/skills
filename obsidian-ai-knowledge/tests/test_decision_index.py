@@ -10,7 +10,8 @@ SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 from decision_index import build_entries, save_index, search_index  # noqa: E402
-from recall_solution import detect_route, probe_solution, recall_decisions  # noqa: E402
+from recall_solution import detect_route, probe_solution, project_probe, recall_decisions  # noqa: E402
+from unittest.mock import patch  # noqa: E402
 
 
 class DecisionIndexTests(unittest.TestCase):
@@ -122,6 +123,22 @@ class DecisionIndexTests(unittest.TestCase):
         result = probe_solution(vault, "继续项目", route="project")
         self.assertFalse(result["match"])
         self.assertEqual(result["next"], "provide-project")
+
+    def test_project_probe_reports_live_stale_state(self) -> None:
+        vault = self.make_vault()
+        project_note = vault / "knowledge" / "Project.md"
+        project_note.write_text(
+            "---\nschema_version: 2\nrecord_type: project\nrecord_id: project-demo\n"
+            "status: active\nfreshness_state: current\nnext_action: inspect\n---\n",
+            encoding="utf-8",
+        )
+        with patch("recall_solution.find_project_note", return_value=project_note), patch(
+            "recall_solution.inspect_project", return_value={"freshness_state": "stale"}
+        ):
+            result = project_probe(vault, "Project")
+        self.assertEqual(result["freshness_state"], "stale")
+        self.assertEqual(result["freshness_source"], "live")
+        self.assertEqual(result["next"], "review-stale-project")
 
 
 if __name__ == "__main__":

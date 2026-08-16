@@ -73,6 +73,22 @@ class SolutionIndexTests(unittest.TestCase):
         results = search_index(vault, "ERR_EXACT", limit=2)
         self.assertEqual(results[0]["record_id"], "problem-exact")
 
+    def test_changed_record_invalidates_manifest(self) -> None:
+        vault = self.make_vault()
+        self.write(vault, "problems/2026/current.md", (
+            "---\nschema_version: 2\nrecord_type: problem\nrecord_id: problem-current\n"
+            "status: solved\nreview_state: reviewed\nconfidence: high\n"
+            "root_cause: exact signature mismatch\nerror_signatures: [ERR_EXACT]\nsource_ref: test\n---\n"
+        ))
+        save_index(vault)
+        self.assertIsNotNone(search_index(vault, "ERR_EXACT"))
+        self.write(vault, "problems/2026/current.md", (
+            "---\nschema_version: 2\nrecord_type: problem\nrecord_id: problem-current\n"
+            "status: solved\nreview_state: reviewed\nconfidence: high\n"
+            "root_cause: changed signature\nerror_signatures: [ERR_CHANGED]\nsource_ref: test\n---\n"
+        ))
+        self.assertIsNone(search_index(vault, "ERR_EXACT"))
+
 
 if __name__ == "__main__":
     unittest.main()

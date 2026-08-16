@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 from pathlib import Path
@@ -112,6 +113,29 @@ def iter_record_paths(vault: Path, config: dict[str, Any]) -> Iterator[Path]:
         if any(part in excluded for part in relative_parts):
             continue
         yield path
+
+
+def record_manifest(vault: Path, config: dict[str, Any] | None = None) -> str:
+    current_config = config or load_config(vault)
+    items: list[str] = []
+    for path in iter_record_paths(vault, current_config):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        relative = path.relative_to(vault).as_posix()
+        items.append(f"{relative}:{stat.st_mtime_ns}:{stat.st_size}")
+    return hashlib.sha256("\n".join(sorted(items)).encode("utf-8")).hexdigest()
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    temporary = path.with_name(path.name + ".tmp")
+    try:
+        temporary.write_text(text, encoding="utf-8")
+        temporary.replace(path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
 
 
 def extract_wikilinks(text: str) -> list[str]:

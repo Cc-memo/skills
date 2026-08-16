@@ -35,6 +35,7 @@ python scripts/recall_solution.py --query "continue project" --mode probe --rout
 ```
 
 The probe returns only project status, freshness, next action, and the instruction to build a focused project context pack.
+Project freshness is checked against the current watched repository/files during the probe. If it is `stale`, do not load the old context pack as authoritative; review the change and run `project_freshness.py --scan`, then accept a new baseline only after inspection.
 
 ## Index maintenance
 
@@ -47,3 +48,5 @@ python scripts/build_memory_indexes.py
 Sessions remain evidence. They are not added to the technical solution index.
 
 If the decision index is missing, the fallback scans only records that satisfy the same trusted decision criteria; it never treats every session as a prior answer.
+
+Both compact indexes carry a source manifest. When a knowledge record changes, the old index is treated as unavailable and the problem route falls back to deterministic lexical retrieval while reporting that the index should be rebuilt.

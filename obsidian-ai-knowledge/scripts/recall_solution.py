@@ -13,6 +13,7 @@ from decision_index import (
     search_entries as search_decision_entries,
     search_index as search_decision_index,
 )
+from project_freshness import inspect_project
 from project_space import find_project_note
 from search_knowledge import search_records, stringify, trust_state
 from solution_index import search_index
@@ -99,16 +100,30 @@ def project_probe(vault: Path, project: str | None) -> dict[str, Any]:
         metadata, _ = split_frontmatter(project_note.read_text(encoding="utf-8"))
     except (OSError, ValueError, FileNotFoundError):
         return {"match": False, "route": "project", "reason": "project-not-found", "next": "solve-directly"}
-    return {
+    freshness_state = metadata.get("freshness_state", "unknown")
+    freshness_source = "stored"
+    freshness_reason = None
+    try:
+        live = inspect_project(vault, project, mode="check")
+        freshness_state = live.get("freshness_state", "unknown")
+        freshness_source = "live"
+        freshness_reason = live.get("reason")
+    except (OSError, ValueError, FileNotFoundError):
+        freshness_reason = "freshness-check-failed"
+    result = {
         "match": True,
         "route": "project",
         "project": project_note.stem,
         "record_id": metadata.get("record_id"),
         "status": metadata.get("status"),
-        "freshness_state": metadata.get("freshness_state", "unknown"),
+        "freshness_state": freshness_state,
+        "freshness_source": freshness_source,
         "next_action": stringify(metadata.get("next_action"))[:180],
-        "next": "load-project-context",
+        "next": "review-stale-project" if freshness_state == "stale" else "load-project-context",
     }
+    if freshness_reason:
+        result["freshness_reason"] = freshness_reason
+    return result
 
 
 def _compact_match(candidate: dict[str, Any], *, route: str) -> dict[str, Any]:
@@ -149,11 +164,16 @@ def probe_solution(
         }
     indexed = search_index(vault, query, limit=1)
     if indexed is None:
+        fallback = [item for item in recall_solutions(vault, query, limit=1) if item.get("record_type") in ANSWER_TYPES]
+        if fallback:
+            candidate = fallback[0]
+            if candidate.get("trust_state") == "trusted" and int(candidate.get("score") or 0) > 0:
+                return _compact_match(candidate, route="problem")
         return {
             "match": False,
             "route": "problem",
-            "reason": "index-missing",
-            "next": "solve-directly",
+            "reason": "index-unavailable",
+            "next": "rebuild-index",
         }
     if not indexed:
         return {

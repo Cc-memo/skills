@@ -23,7 +23,8 @@ class ProbeModeTests(unittest.TestCase):
         config = system / "config.yaml"
         config.write_text(
             "schema_version: 2\nknowledge_root: knowledge\n"
-            "excluded_directories: [templates, _system, project-spaces]\n",
+            "excluded_directories: [templates, _system, project-spaces]\n"
+            "record_directories: {project: projects, problem: problems, session: sessions, playbook: playbooks, inbox: Inbox}\n",
             encoding="utf-8",
         )
         self.previous_config = os.environ.get("OBSIDIAN_AI_CONFIG")
@@ -64,6 +65,16 @@ class ProbeModeTests(unittest.TestCase):
         self.assertTrue(result["match"])
         self.assertEqual(set(result), {"match", "route", "record_id", "record_type", "score", "trust_state", "root_cause", "next"})
         self.assertEqual(result["next"], "load-detail")
+
+    def test_stale_index_uses_controlled_lexical_fallback(self) -> None:
+        vault = self.make_vault()
+        self.write_problem(vault)
+        save_index(vault)
+        path = vault / "knowledge" / "problems" / "current.md"
+        path.write_text(path.read_text(encoding="utf-8") + "\nUpdated evidence.\n", encoding="utf-8")
+        result = probe_solution(vault, "ERR_X")
+        self.assertTrue(result["match"])
+        self.assertEqual(result["record_id"], "problem-x")
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from common import iter_record_paths, knowledge_root, load_config, split_frontmatter
+from common import atomic_write_text, iter_record_paths, knowledge_root, load_config, record_manifest, split_frontmatter
 from search_knowledge import is_superseded, stringify, tokens, trust_state
 
 
@@ -95,11 +95,13 @@ def build_entries(vault: Path) -> list[dict[str, Any]]:
 
 
 def build_index(vault: Path) -> dict[str, Any]:
+    config = load_config(vault)
     entries = build_entries(vault)
     return {
         "schema_version": INDEX_SCHEMA_VERSION,
         "generated_at": date.today().isoformat(),
         "record_count": len(entries),
+        "source_manifest": record_manifest(vault, config),
         "entries": entries,
     }
 
@@ -107,7 +109,7 @@ def build_index(vault: Path) -> dict[str, Any]:
 def save_index(vault: Path, output: Path | None = None) -> Path:
     path = output or index_path(vault)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(build_index(vault), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    atomic_write_text(path, json.dumps(build_index(vault), ensure_ascii=False, indent=2) + "\n")
     return path
 
 
@@ -119,7 +121,14 @@ def load_index(vault: Path) -> dict[str, Any] | None:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
-    return payload if isinstance(payload, dict) and isinstance(payload.get("entries"), list) else None
+    if not isinstance(payload, dict) or payload.get("schema_version") != INDEX_SCHEMA_VERSION:
+        return None
+    if not isinstance(payload.get("entries"), list):
+        return None
+    source_manifest = payload.get("source_manifest")
+    if source_manifest and source_manifest != record_manifest(vault):
+        return None
+    return payload
 
 
 def score_entry(entry: dict[str, Any], query: str) -> tuple[int, list[str]]:

@@ -35,7 +35,7 @@ Rebuild after changing a problem/playbook:
 python scripts/build_memory_indexes.py
 ```
 
-The index is deterministic lexical retrieval, not embeddings. Exact error signatures rank highest. Missing or invalid indexes fall back to lexical search.
+The index is deterministic lexical retrieval, not embeddings. Exact error signatures rank highest. Missing, stale, or invalid indexes fall back to controlled lexical search; rebuild after the task instead of treating the cache as authoritative.
 
 ## Capture
 
